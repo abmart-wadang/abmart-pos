@@ -1,0 +1,245 @@
+
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#168bd2">
+<title>ABmart POS</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:Arial;background:#eef6fb;color:#17354b}
+header{background:#168bd2;color:white;padding:20px}
+header h2{margin:0}
+main{padding:12px;max-width:700px;margin:auto}
+.card{background:white;padding:15px;margin-bottom:12px;border-radius:12px}
+button{border:0;background:#168bd2;color:white;padding:12px;border-radius:8px;font-weight:bold}
+input{width:100%;padding:12px;margin:7px 0;border:1px solid #ccdce7;border-radius:8px}
+nav{display:flex;gap:7px;margin-bottom:12px}
+nav button{flex:1}
+.secondary{background:#dceefa;color:#075b8e}
+.item{display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid #ddd;gap:8px}
+.total{font-size:22px;font-weight:bold;color:#087fc4}
+small{color:#637b8c}
+video{width:100%;display:none}
+</style>
+</head>
+<body>
+
+<header>
+<h2>ABmart POS</h2>
+<p>Kasir Toko ABmart</p>
+</header>
+
+<main>
+<nav>
+<button onclick="halaman('kasir')">KASIR</button>
+<button onclick="halaman('barang')">BARANG</button>
+<button onclick="halaman('laporan')">LAPORAN</button>
+</nav>
+
+<section id="kasir">
+<div class="card">
+<h3>Daftar Barang</h3>
+<input id="cari" placeholder="Cari nama atau barcode..." oninput="tampilBarang()">
+<button onclick="scan()">SCAN KAMERA</button>
+<video id="kamera" autoplay playsinline></video>
+<div id="hasilBarang"></div>
+</div>
+
+<div class="card">
+<h3>Keranjang Belanja</h3>
+<div id="keranjang"></div>
+<p>Total:</p>
+<div class="total" id="total">Rp0</div>
+<input id="bayar" type="number" placeholder="Uang pembayaran">
+<button onclick="selesai()">BAYAR SEKARANG</button>
+<button class="secondary" onclick="kosong()">Kosongkan</button>
+<p id="kembalian"></p>
+</div>
+</section>
+
+<section id="barang" style="display:none">
+<div class="card">
+<h3>Tambah Barang</h3>
+<input id="nama" placeholder="Nama barang">
+<input id="barcode" placeholder="Barcode">
+<input id="harga" type="number" placeholder="Harga jual">
+<input id="stok" type="number" placeholder="Jumlah stok">
+<button onclick="tambahBarang()">SIMPAN BARANG</button>
+</div>
+<div class="card">
+<h3>Daftar Stok</h3>
+<div id="daftarStok"></div>
+</div>
+</section>
+
+<section id="laporan" style="display:none">
+<div class="card">
+<h3>Laporan Penjualan</h3>
+<div id="laporanIsi"></div>
+</div>
+</section>
+</main>
+
+<script>
+let barang=JSON.parse(localStorage.getItem('ab_barang')||'[]');
+let transaksi=JSON.parse(localStorage.getItem('ab_transaksi')||'[]');
+let keranjang=[];
+
+const rupiah=n=>'Rp'+Number(n).toLocaleString('id-ID');
+const simpan=()=>{
+ localStorage.setItem('ab_barang',JSON.stringify(barang));
+ localStorage.setItem('ab_transaksi',JSON.stringify(transaksi));
+};
+
+function halaman(n){
+ ['kasir','barang','laporan'].forEach(x=>{
+ document.getElementById(x).style.display=x===n?'block':'none';
+ });
+ tampilBarang();tampilStok();tampilLaporan();
+}
+
+function tambahBarang(){
+ let nama=document.getElementById('nama').value.trim();
+ let barcode=document.getElementById('barcode').value.trim();
+ let harga=Number(document.getElementById('harga').value);
+ let stok=Number(document.getElementById('stok').value);
+ if(!nama||harga<=0||stok<0){alert('Isi data barang dengan benar');return}
+ barang.push({id:Date.now(),nama,barcode,harga,stok});
+ simpan();
+ ['nama','barcode','harga','stok'].forEach(x=>document.getElementById(x).value='');
+ tampilStok();tampilBarang();
+ alert('Barang berhasil disimpan');
+}
+
+function tampilBarang(){
+ let q=document.getElementById('cari').value.toLowerCase();
+ let hasil=barang.filter(b=>b.nama.toLowerCase().includes(q)||b.barcode.includes(q));
+ document.getElementById('hasilBarang').innerHTML=hasil.map(b=>
+ `<div class="item">
+ <span>${b.nama}<br><small>Stok: ${b.stok}</small><br>${rupiah(b.harga)}</span>
+ <button onclick="tambahKeranjang(${b.id})">TAMBAH</button>
+ </div>`).join('');
+}
+
+function tambahKeranjang(id){
+ let b=barang.find(x=>x.id===id);
+ let k=keranjang.find(x=>x.id===id);
+ if(!b||b.stok<1)return alert('Stok habis');
+ if(k){
+ if(k.qty>=b.stok)return alert('Stok tidak cukup');
+ k.qty++;
+ }else keranjang.push({...b,qty:1});
+ tampilKeranjang();
+}
+
+function tampilKeranjang(){
+ let total=keranjang.reduce((s,k)=>s+k.harga*k.qty,0);
+ document.getElementById('keranjang').innerHTML=keranjang.map(k=>
+ `<div class="item">
+ <span>${k.nama} × ${k.qty}</span>
+ <button onclick="hapusItem(${k.id})">HAPUS</button>
+ </div>`).join('');
+ document.getElementById('total').innerText=rupiah(total);
+}
+
+function hapusItem(id){
+ keranjang=keranjang.filter(k=>k.id!==id);
+ tampilKeranjang();
+}
+
+function kosong(){
+ keranjang=[];
+ tampilKeranjang();
+}
+
+function selesai(){
+ if(!keranjang.length)return alert('Keranjang kosong');
+ let total=keranjang.reduce((s,k)=>s+k.harga*k.qty,0);
+ let bayar=Number(document.getElementById('bayar').value);
+ if(bayar<total)return alert('Pembayaran kurang');
+
+ for(let k of keranjang){
+ let b=barang.find(x=>x.id===k.id);
+ if(!b||b.stok<k.qty)return alert('Stok tidak cukup: '+k.nama);
+ }
+ for(let k of keranjang){
+ barang.find(x=>x.id===k.id).stok-=k.qty;
+ }
+ transaksi.push({
+ tanggal:new Date().toLocaleString('id-ID'),
+ total,
+ barang:keranjang.map(k=>({nama:k.nama,qty:k.qty,harga:k.harga}))
+ });
+ simpan();
+ alert('Transaksi berhasil!\nKembalian: '+rupiah(bayar-total));
+ keranjang=[];
+ document.getElementById('bayar').value='';
+ tampilKeranjang();tampilBarang();tampilStok();tampilLaporan();
+}
+
+function tampilStok(){
+ document.getElementById('daftarStok').innerHTML=barang.map(b=>
+ `<div class="item">
+ <span>${b.nama}<br><small>${rupiah(b.harga)} | Stok ${b.stok}</small></span>
+ <button onclick="hapusBarang(${b.id})">Hapus</button>
+ </div>`).join('')||'Belum ada barang';
+}
+
+function hapusBarang(id){
+ if(confirm('Hapus barang ini?')){
+ barang=barang.filter(b=>b.id!==id);
+ simpan();tampilStok();tampilBarang();
+ }
+}
+
+function tampilLaporan(){
+ let total=transaksi.reduce((s,t)=>s+t.total,0);
+ document.getElementById('laporanIsi').innerHTML=
+ `<h2>${rupiah(total)}</h2>
+ <p>Total transaksi: ${transaksi.length}</p>`+
+ transaksi.slice().reverse().map(t=>
+ `<div class="item"><span>${t.tanggal}</span><b>${rupiah(t.total)}</b></div>`
+ ).join('');
+}
+
+let stream=null;
+async function scan(){
+ if(!('BarcodeDetector' in window)){
+ alert('Pemindai otomatis belum didukung browser ini. Silakan ketik barcode.');
+ return;
+ }
+ try{
+ stream=await navigator.mediaDevices.getUserMedia({
+ video:{facingMode:'environment'}
+ });
+ let video=document.getElementById('kamera');
+ video.style.display='block';
+ video.srcObject=stream;
+ await video.play();
+ let detector=new BarcodeDetector();
+ async function baca(){
+ if(!stream)return;
+ let hasil=await detector.detect(video);
+ if(hasil.length){
+ document.getElementById('cari').value=hasil[0].rawValue;
+ tampilBarang();
+ stream.getTracks().forEach(t=>t.stop());
+ stream=null;
+ video.style.display='none';
+ return;
+ }
+ requestAnimationFrame(baca);
+ }
+ baca();
+ }catch(e){alert('Kamera tidak bisa dibuka. Periksa izin kamera.')}
+}
+
+tampilBarang();
+tampilKeranjang();
+tampilStok();
+tampilLaporan();
+</script>
+</body>
+</html>
